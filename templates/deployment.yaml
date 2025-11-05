@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+spec:
+  revisionHistoryLimit: 5
+  minReadySeconds: 20
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  {{- if not .Values.autoscale.enabled }}
+  replicas: {{ default (ternary 1 2 (eq .Values.env.APP_ENV "development")) .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 50%
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Release.Name }}
+          imagePullPolicy: IfNotPresent
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          {{- if .Values.resources }}
+          {{- $cpuReq := "" }}
+          {{- $cpuLim := "" }}
+          {{- $memReq := "" }}
+          {{- $memLim := "" }}
+          {{- with .Values.resources.cpu }}{{- if .requests }}{{- $cpuReq = .requests }}{{- end }}{{- if .limits }}{{- $cpuLim = .limits }}{{- end }}{{- end }}
+          {{- with .Values.resources.memory }}{{- if .requests }}{{- $memReq = .requests }}{{- end }}{{- if .limits }}{{- $memLim = .limits }}{{- end }}{{- end }}
+          {{- if or $cpuReq $cpuLim $memReq $memLim }}
+          resources:
+          {{- if or $cpuReq $memReq }}
+            requests:
+          {{- end }}
+          {{- if $cpuReq }}
+              cpu: {{ $cpuReq }}
+          {{- end }}
+          {{- if $memReq }}
+              memory: {{ $memReq }}
+          {{- end }}
+          {{- if or $cpuLim $memLim }}
+            limits:
+          {{- end }}
+          {{- if $cpuLim }}
+              cpu: {{ $cpuLim }}
+          {{- end }}
+          {{- if $memLim }}
+              memory: {{ $memLim }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          command: ["server"]
+          env:
+            - name: APP_ENV
+              value: {{ .Values.env.APP_ENV }}
+            - name: DATABASE_URL
+              value: {{ .Values.env.DATABASE_URL }}
+            - name: POOL_SIZE
+              value: {{ .Values.env.POOL_SIZE | quote }}
+            - name: SECRET_KEY_BASE
+              value: {{ .Values.env.SECRET_KEY_BASE }}
+            - name: PHX_HOST
+              value: {{ .Values.env.PHX_HOST }}
+            - name: PORT
+              value: {{ .Values.env.PORT | quote }}
+            {{- range .Values.extraEnvVars }}
+            - name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.env.PORT }}
+              protocol: TCP
+          readinessProbe:
+            initialDelaySeconds: 15
+            httpGet:
+              path: /_health
+              port: {{ .Values.env.PORT }}
+          livenessProbe:
+            initialDelaySeconds: 15
+            httpGet:
+              path: /_health
+              port: {{ .Values.env.PORT }}
+          {{- if eq .Values.startupProbe.enabled true }}
+          startupProbe:
+            initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.startupProbe.successThreshold }}
+            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
+            httpGet:
+              path: /_health
+              port: {{ .Values.env.PORT }}
+          {{- end }}
+          {{- if .Values.volumeMounts }}
+          volumeMounts:
+          {{- range .Values.volumeMounts }}
+          - {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+        {{- if .Values.sidecars }}
+        {{- range .Values.sidecars }}
+        - {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- end }}
+      {{- if .Values.volumes }}
+      volumes:
+      {{- toYaml .Values.volumes | nindent 10 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - {{ .Release.Name }}
+              topologyKey: kubernetes.io/hostname

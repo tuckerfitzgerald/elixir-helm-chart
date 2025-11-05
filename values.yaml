@@ -1,0 +1,131 @@
+# Container image configuration
+image:
+  # Docker image repository URL
+  repository: ghcr.io/stordco/sre-technical-challenge
+  # Image tag/version to deploy
+  tag: latest
+
+# Environment variables for the application container
+env:
+  # PostgreSQL database connection string
+  # TODO move this into a secret before moving to production. This can be done using an external secret manager or a secret volume mount.
+  DATABASE_URL: postgresql://postgres:password@sre-db-postgresql/sre-technical-challenge
+  # Database connection pool size
+  POOL_SIZE: 10
+  # Phoenix application host
+  PHX_HOST: localhost
+  # Port the application listens on
+  PORT: 4000
+  # Application environment (development, staging, production)
+  APP_ENV: development
+  # 64 char random string for cookie encryption
+  # TODO: move this into a secret - can be done after the initial deployment when the db migration job doesn't need to be run.
+  SECRET_KEY_BASE: kexHrtev472WDA8M4CbnMitJwUTV7LRtRZsUAMomkkb6qEh4jGWDG52abuVXKMGn
+
+# Additional environment variables as key-value pairs
+# Example: { name: "MY_VAR", value: "my_value" }
+extraEnvVars: {}
+
+# Number of pod replicas (only used when autoscale.enabled is false)
+replicaCount: {}
+
+# Resource requests and limits for the container
+# Example:
+#   cpu:
+#     requests: "100m"
+#     limits: "500m"
+#   memory:
+#     requests: "128Mi"
+#     limits: "512Mi"
+resources: {}
+
+# Volume mounts for the container
+# Example: [{ name: "config", mountPath: "/etc/config" }]
+volumeMounts: {}
+
+# Additional sidecar containers to run alongside the main container
+# Example: [{ name: "sidecar", image: "sidecar:latest" }]
+sidecars: {}
+
+# Kubernetes volumes to attach to pods
+# Example: [{ name: "config", configMap: { name: "app-config" } }]
+volumes: {}
+
+# Enable database migration job before deployment
+enableDbMigration: true
+
+# Horizontal Pod Autoscaler (HPA) configuration
+autoscale:
+  # Enable/disable automatic pod scaling based on metrics
+  enabled: false
+  # Maximum number of pod replicas
+  maxReplicas: 10
+  # Minimum number of pod replicas
+  minReplicas: 1
+  # Enable autoscaling for additional container (sidecar)
+  additionalContainerEnabled: false
+  # Name of the additional container to monitor
+  additionalContainerName: ""
+  # CPU utilization target percentage for additional container
+  additionalContainerTargetCPUUtilizationPercentage:
+  # Memory utilization target percentage for additional container
+  additionalContainerTargetMemoryUtilizationPercentage:
+  # CPU utilization target percentage (triggers scaling when exceeded)
+  targetCPUUtilizationPercentage: 70
+  # Memory utilization target percentage (triggers scaling when exceeded)
+  targetMemoryUtilizationPercentage: 70
+  # Scaling down behavior
+  down:
+    # Time window to wait before scaling down (prevents flapping)
+    stabilizationWindowSeconds: 300
+    policies:
+      # Scale down by number of pods
+      pods:
+        value: 1
+        periodSeconds: 60
+      # Scale down by percentage of pods
+      percent:
+        value: 100
+        periodSeconds: 60
+      # Select the minimum policy (most conservative scaling)
+      selectPolicy: Min
+  # Scaling up behavior
+  up:
+    # Time window to wait before scaling up (0 = immediate)
+    stabilizationWindowSeconds: 0
+    policies:
+      # Scale up by number of pods
+      pods:
+        value: 4
+        periodSeconds: 15
+      # Scale up by percentage of pods
+      percent:
+        value: 100
+        periodSeconds: 15
+      # Select the maximum policy (most aggressive scaling)
+      selectPolicy: Max
+
+# Pod Disruption Budget (PDB) configuration
+# Ensures minimum availability during voluntary disruptions (e.g., node maintenance)
+podDisruptionBudget:
+  # Enable/disable Pod Disruption Budget
+  enabled: false
+  # Minimum number or percentage of pods that must be available
+  minAvailable: 50%
+
+# Startup probe configuration
+# Checks if the application has started successfully before checking readiness probe
+# Useful for long-running initialization tasks instead of extending readiness probe initial delay
+startupProbe:
+  # Enable/disable startup probe
+  enabled: false
+  # Initial delay before starting probe checks
+  initialDelaySeconds: 0
+  # How often to perform the probe check
+  periodSeconds: 10
+  # Number of consecutive failures before marking pod as failed
+  failureThreshold: 9
+  # Number of consecutive successes before marking pod as ready
+  successThreshold: 1
+  # Timeout for each probe check
+  timeoutSeconds: 1
